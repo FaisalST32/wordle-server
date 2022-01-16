@@ -7,6 +7,6 @@ async function bootstrap() {
     origin: '*',
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
   });
-  await app.listen(process.env.PORT || 2700);
+  await app.listen(process.env.PORT || 2700, '0.0.0.0');
 }
 bootstrap();
