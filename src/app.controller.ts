@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpStatus,
+  Param,
+  Post,
+  Res,
+} from '@nestjs/common';
+import { Response } from 'express';
 import { CreateGameData, GameData } from './dtos/game';
 import { GameService } from './game.service';
 
@@ -7,16 +16,24 @@ export class AppController {
   constructor(private readonly gameService: GameService) {}
 
   @Post('join')
-  async joinGame(@Body() details: CreateGameData): Promise<GameData> {
-    const gameDetails = await this.gameService.joinGame(details.userId);
-    const opponentId =
-      gameDetails.player1.name === details.userId
-        ? gameDetails.player2.name
-        : gameDetails.player1.name;
-    return {
-      opponentId,
-      gameId: gameDetails.id,
-    };
+  async joinGame(
+    @Body() details: CreateGameData,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<GameData> {
+    try {
+      const gameDetails = await this.gameService.joinGame(details.userId);
+      const opponentId =
+        gameDetails.player1.name === details.userId
+          ? gameDetails.player2.name
+          : gameDetails.player1.name;
+      return {
+        opponentId,
+        gameId: gameDetails.id,
+      };
+    } catch (err) {
+      response.status(HttpStatus.BAD_REQUEST).send({ error: err.message });
+      return;
+    }
   }
 
   @Post('create')

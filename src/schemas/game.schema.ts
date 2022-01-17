@@ -8,6 +8,11 @@ export enum GameStatus {
   Finished = 'finished',
 }
 
+export enum GameMode {
+  Solo = 'solo',
+  Online = 'online',
+}
+
 export class GamePlayer {
   @Prop()
   name: string;
@@ -17,6 +22,11 @@ export class GamePlayer {
 
   @Prop([LetterState])
   statuses: LetterState[][];
+}
+
+export class GameConfig {
+  @Prop({ enum: GameMode })
+  mode: GameMode;
 }
 
 export type GameDocument = Game & Document;
@@ -37,6 +47,9 @@ export class Game {
 
   @Prop()
   winner: string;
+
+  @Prop()
+  config: GameConfig;
 }
 
 export const GameSchema = SchemaFactory.createForClass(Game);

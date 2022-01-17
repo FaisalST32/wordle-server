@@ -5,6 +5,7 @@ import { RowData } from './dtos/play';
 import {
   Game,
   GameDocument,
+  GameMode,
   GamePlayer,
   GameStatus,
 } from './schemas/game.schema';
@@ -18,19 +19,30 @@ export class GameService {
   ) {}
 
   async joinGame(userId: string): Promise<GameDocument> {
-    const foundGame = await this.gameModel.findOne({
-      status: GameStatus.Pending,
-    });
-    console.log({ foundGame });
-    if (foundGame) {
-      foundGame.status = GameStatus.Started;
-      foundGame.player2 = { ...foundGame.player2, name: userId };
-      const game = await foundGame.save();
-      return game;
+    let newGame: GameDocument;
+    try {
+      const foundGame = await this.gameModel.findOne({
+        status: GameStatus.Pending,
+        'config.mode': GameMode.Online,
+      });
+      // console.log(foundGame);
+      // console.log({ foundGame });
+      if (foundGame) {
+        foundGame.status = GameStatus.Started;
+        foundGame.player2 = { ...foundGame.player2, name: userId };
+        const game = await foundGame.save();
+        return game;
+      }
+      newGame = await this.createGame(userId);
+      const startedGame = await this.pollForPlayerJoined(newGame._id);
+      return startedGame;
+    } catch (err) {
+      if (newGame) {
+        newGame.status = GameStatus.Finished;
+        await newGame.save();
+      }
+      throw err;
     }
-    const newGame = await this.createGame(userId);
-    const startedGame = await this.pollForPlayerJoined(newGame._id);
-    return startedGame;
   }
 
   async createGame(userId: string, isSolo = false): Promise<GameDocument> {
@@ -41,6 +53,7 @@ export class GameService {
       winner: '',
       // TODO: Use a service dummy
       wordle: this.wordsService.generateWordle(),
+      config: { mode: isSolo ? GameMode.Solo : GameMode.Online },
     };
     const newGame = new this.gameModel(gameData);
     await newGame.save();
@@ -52,18 +65,25 @@ export class GameService {
   }
 
   async pollForPlayerJoined(gameId: ObjectId): Promise<GameDocument> {
-    return new Promise((res) => {
+    return new Promise((res, rej) => {
       const interval = setInterval(async () => {
         const startedGame = await this.gameModel.findOne({
           _id: gameId,
           status: GameStatus.Started,
-          'player2.name': { $nin: [null, ''] },
+          'config.mode': GameMode.Online,
         });
         if (startedGame) {
+          console.log('clearing timeout');
           clearInterval(interval);
+          clearTimeout(timeout);
           res(startedGame);
         }
       }, 1000);
+
+      const timeout = setTimeout(() => {
+        clearInterval(interval);
+        rej(new Error("Couldn't find a game"));
+      }, 30000);
     });
   }
 
