@@ -57,6 +57,7 @@ export class GameService {
         const startedGame = await this.gameModel.findOne({
           _id: gameId,
           status: GameStatus.Started,
+          'player2.name': { $nin: [null, ''] },
         });
         if (startedGame) {
           clearInterval(interval);
