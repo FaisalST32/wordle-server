@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import axios from 'axios';
 
 @Injectable()
 export class WordsService {
@@ -217,7 +216,6 @@ export class WordsService {
     'World',
     'Youth',
     'Aught',
-    'One’s',
     'Ought',
     'There',
     'Thine',
@@ -272,7 +270,6 @@ export class WordsService {
     'Laugh',
     'Learn',
     'Leave',
-    'Let’s',
     'Limit',
     'Marry',
     'Match',
@@ -543,7 +540,6 @@ export class WordsService {
     'Sleek',
     'Slyly',
     'Small',
-    'So-So',
     'Sound',
     'Spang',
     'Stark',

@@ -49,4 +49,23 @@ export class AppController {
     const { gameId, playerId } = params;
     return this.gameService.getPlayerStatus(gameId, playerId);
   }
+
+  @Get('game/:gameId/wordle')
+  async getWordle(
+    @Param() params,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const { gameId } = params;
+    const canRetrieveWordle: boolean = await this.gameService.canRetrieveWordle(
+      gameId,
+    );
+    if (!canRetrieveWordle) {
+      response
+        .status(HttpStatus.BAD_REQUEST)
+        .send({ error: 'You cannot retrieve the wordle for this game' });
+      return;
+    }
+    const wordle = await this.gameService.getWordle(gameId);
+    return { wordle };
+  }
 }

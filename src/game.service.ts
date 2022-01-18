@@ -51,7 +51,6 @@ export class GameService {
       player1: { name: userId, rows: [], statuses: [] },
       player2: { name: '', rows: [], statuses: [] },
       winner: '',
-      // TODO: Use a service dummy
       wordle: this.wordsService.generateWordle(),
       config: { mode: isSolo ? GameMode.Solo : GameMode.Online },
     };
@@ -100,16 +99,14 @@ export class GameService {
       rowData.word,
     );
     if (!isValidWord) {
-      throw new Error('The entered word is not correct');
+      throw new Error('The entered word is not valid');
     }
 
     const playerProp: string =
       rowData.playerName === game.player1.name ? 'player1' : 'player2';
 
-    const player: GamePlayer =
-      rowData.playerName === game.player1.name ? game.player1 : game.player2;
+    const player: GamePlayer = game[playerProp];
 
-    console.log(player);
     if (player.name !== rowData.playerName) {
       throw new Error('That player does not belong to this game');
     }
@@ -154,5 +151,27 @@ export class GameService {
           ? foundGame.wordle
           : '',
     };
+  }
+
+  async canRetrieveWordle(gameId: string): Promise<boolean> {
+    const foundGame = await this.gameModel.findById(gameId);
+    if (!foundGame) {
+      return false;
+    }
+    if (foundGame.config.mode !== GameMode.Solo) {
+      return false;
+    }
+    if (foundGame.player1.rows.length !== 6) {
+      return false;
+    }
+    return true;
+  }
+
+  async getWordle(gameId: string): Promise<string> {
+    const foundGame = await this.gameModel.findById(gameId);
+    if (!foundGame) {
+      throw new Error('Game not found');
+    }
+    return foundGame.wordle;
   }
 }
