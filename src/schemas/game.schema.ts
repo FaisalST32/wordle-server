@@ -31,7 +31,7 @@ export class GameConfig {
 
 export type GameDocument = Game & Document;
 
-@Schema()
+@Schema({ timestamps: true })
 export class Game {
   @Prop()
   player1: GamePlayer;
