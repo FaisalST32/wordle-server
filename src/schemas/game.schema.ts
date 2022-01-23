@@ -6,12 +6,20 @@ export enum GameStatus {
   Started = 'started',
   Pending = 'pending',
   Finished = 'finished',
+  Cancelled = 'cancelled',
 }
 
 export enum GameMode {
   Solo = 'solo',
   Online = 'online',
 }
+
+export type OngoingGame = {
+  gameId: string;
+  moves?: { character: string; state: LetterState }[][];
+  opponentMoves?: LetterState[][];
+  opponentId: string;
+};
 
 export class GamePlayer {
   @Prop()
@@ -50,6 +58,9 @@ export class Game {
 
   @Prop()
   config: GameConfig;
+
+  @Prop({ required: false })
+  gameCode?: string;
 }
 
 export const GameSchema = SchemaFactory.createForClass(Game);

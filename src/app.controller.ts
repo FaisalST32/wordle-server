@@ -8,7 +8,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { Response } from 'express';
-import { CreateGameData, GameData } from './dtos/game';
+import { CreateGameData, GameData, JoinGameFromCodeData } from './dtos/game';
 import { GameService } from './game.service';
 
 @Controller('games')
@@ -22,13 +22,10 @@ export class AppController {
   ): Promise<GameData> {
     try {
       const gameDetails = await this.gameService.joinGame(details.userId);
-      const opponentId =
-        gameDetails.player1.name === details.userId
-          ? gameDetails.player2.name
-          : gameDetails.player1.name;
+
       return {
-        opponentId,
-        gameId: gameDetails.id,
+        opponentId: gameDetails.opponentId,
+        gameId: gameDetails.gameId,
       };
     } catch (err) {
       response.status(HttpStatus.BAD_REQUEST).send({ error: err.message });
@@ -36,12 +33,51 @@ export class AppController {
     }
   }
 
-  @Post('create')
-  async createGame(@Body() details: CreateGameData) {
-    const gameDetails = await this.gameService.createGame(details.userId, true);
+  @Post('join-solo')
+  async createSoloGame(@Body() details: CreateGameData) {
+    const gameDetails = await this.gameService.createSoloGame(
+      details.userId,
+      true,
+    );
     return {
       gameId: gameDetails.id,
     };
+  }
+
+  @Post('generate-code')
+  async generateGameCode(
+    @Body() details: CreateGameData,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    try {
+      const gameDetails = await this.gameService.generateNewGameCode(
+        details.userId,
+      );
+      return {
+        gameId: gameDetails.id,
+        gameCode: gameDetails.gameCode,
+      };
+    } catch (err) {
+      response.status(HttpStatus.BAD_REQUEST).send({ error: err.message });
+      return;
+    }
+  }
+
+  @Post('join-with-code')
+  async joinGameWithCode(
+    @Body() details: JoinGameFromCodeData,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    try {
+      const gameDetails = await this.gameService.joinFromCode(
+        details.userId,
+        details.gameCode,
+      );
+      return gameDetails;
+    } catch (err) {
+      response.status(HttpStatus.BAD_REQUEST).send({ error: err.message });
+      return;
+    }
   }
 
   @Get('game/:gameId/status/:playerId')

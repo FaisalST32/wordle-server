@@ -12,7 +12,7 @@ import { GameModule } from './schemas/game.module';
     ),
     MongooseModule.forRoot(
       (() => {
-        console.log({ connectionString: process.env.MONGO_CONNECTION_STRING });
+        // console.log({ connectionString: process.env.MONGO_CONNECTION_STRING });
         return process.env.MONGO_CONNECTION_STRING;
       })(),
     ),

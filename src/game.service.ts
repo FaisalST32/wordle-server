@@ -8,8 +8,9 @@ import {
   GameMode,
   GamePlayer,
   GameStatus,
+  OngoingGame,
 } from './schemas/game.schema';
-import { WordsService } from './words.service';
+import { LetterState, WordsService } from './words.service';
 
 @Injectable()
 export class GameService {
@@ -18,12 +19,13 @@ export class GameService {
     private wordsService: WordsService,
   ) {}
 
-  async joinGame(userId: string): Promise<GameDocument> {
+  async joinGame(userId: string): Promise<OngoingGame> {
     let newGame: GameDocument;
     try {
       const foundGame = await this.gameModel.findOne({
         status: GameStatus.Pending,
         'config.mode': GameMode.Online,
+        gameCode: { $in: ['', null] },
       });
       // console.log(foundGame);
       // console.log({ foundGame });
@@ -31,21 +33,33 @@ export class GameService {
         foundGame.status = GameStatus.Started;
         foundGame.player2 = { ...foundGame.player2, name: userId };
         const game = await foundGame.save();
-        return game;
+        return {
+          gameId: game.id,
+          opponentId:
+            game.player1.name === userId
+              ? game.player2.name
+              : game.player1.name,
+        };
       }
-      newGame = await this.createGame(userId);
+      newGame = await this.createSoloGame(userId);
       const startedGame = await this.pollForPlayerJoined(newGame._id);
-      return startedGame;
+      return {
+        gameId: startedGame.id,
+        opponentId:
+          startedGame.player1.name === userId
+            ? startedGame.player2.name
+            : startedGame.player1.name,
+      };
     } catch (err) {
       if (newGame) {
-        newGame.status = GameStatus.Finished;
+        newGame.status = GameStatus.Cancelled;
         await newGame.save();
       }
       throw err;
     }
   }
 
-  async createGame(userId: string, isSolo = false): Promise<GameDocument> {
+  async createSoloGame(userId: string, isSolo = false): Promise<GameDocument> {
     const gameData: Game = {
       status: isSolo ? GameStatus.Started : GameStatus.Pending,
       player1: { name: userId, rows: [], statuses: [] },
@@ -59,6 +73,72 @@ export class GameService {
     return newGame;
   }
 
+  async generateNewGameCode(userId: string): Promise<GameDocument> {
+    const gameData: Game = {
+      status: GameStatus.Pending,
+      player1: { name: userId, rows: [], statuses: [] },
+      player2: { name: '', rows: [], statuses: [] },
+      winner: '',
+      wordle: this.wordsService.generateWordle(),
+      config: { mode: GameMode.Online },
+      gameCode: this.getRandomWord(5),
+    };
+    const newGame = new this.gameModel(gameData);
+    await newGame.save();
+    return newGame;
+  }
+
+  async joinFromCode(userId: string, gameCode: string): Promise<OngoingGame> {
+    const foundGame = await this.gameModel.findOne({
+      gameCode,
+      status: { $ne: GameStatus.Finished },
+    });
+    if (!foundGame) {
+      throw new Error('Cannot find a game with that code');
+    }
+    if (
+      foundGame.player1.name &&
+      foundGame.player2.name &&
+      ![foundGame.player1.name, foundGame.player2.name].includes(userId)
+    ) {
+      throw new Error('The game already has maximum allowed players');
+    }
+    const currentPlayerProp =
+      foundGame.player1.name === userId ? 'player1' : 'player2';
+    const opponentPlayerProp =
+      currentPlayerProp === 'player1' ? 'player2' : 'player1';
+
+    if (foundGame.status === GameStatus.Started) {
+      return {
+        gameId: foundGame.id,
+        opponentMoves: foundGame[opponentPlayerProp].statuses,
+        moves: this.mergeRowsAndStatuses(
+          foundGame[currentPlayerProp].rows,
+          foundGame[currentPlayerProp].statuses,
+        ),
+        opponentId: foundGame[opponentPlayerProp].name,
+      };
+    }
+
+    const shouldWaitForOpponentToJoin =
+      foundGame.player1.name === userId && !foundGame.player2.name;
+
+    if (shouldWaitForOpponentToJoin) {
+      const startedGame = await this.pollForPlayerJoinedWithCode(foundGame.id);
+      return {
+        gameId: startedGame.id,
+        opponentId: startedGame.player2.name,
+      };
+    }
+    foundGame.status = GameStatus.Started;
+    foundGame.player2 = { ...foundGame.player2, name: userId };
+    const game = await foundGame.save();
+    return {
+      gameId: game.id,
+      opponentId: game.player1.name,
+    };
+  }
+
   getGameStatus() {
     return 'ongoing';
   }
@@ -70,9 +150,9 @@ export class GameService {
           _id: gameId,
           status: GameStatus.Started,
           'config.mode': GameMode.Online,
+          gameCode: { $in: ['', null] },
         });
         if (startedGame) {
-          console.log('clearing timeout');
           clearInterval(interval);
           clearTimeout(timeout);
           res(startedGame);
@@ -83,6 +163,23 @@ export class GameService {
         clearInterval(interval);
         rej(new Error("Couldn't find a game"));
       }, 30000);
+    });
+  }
+
+  async pollForPlayerJoinedWithCode(gameId: ObjectId): Promise<GameDocument> {
+    return new Promise((res) => {
+      const interval = setInterval(async () => {
+        const startedGame = await this.gameModel.findOne({
+          _id: gameId,
+          status: GameStatus.Started,
+          'config.mode': GameMode.Online,
+          gameCode: { $nin: ['', null] },
+        });
+        if (startedGame) {
+          clearInterval(interval);
+          res(startedGame);
+        }
+      }, 1000);
     });
   }
 
@@ -110,6 +207,7 @@ export class GameService {
     if (player.name !== rowData.playerName) {
       throw new Error('That player does not belong to this game');
     }
+
     await game.update({ $push: { [`${playerProp}.rows`]: rowData.word } });
 
     const rowResponse = this.wordsService.populateRowResponse(
@@ -167,11 +265,48 @@ export class GameService {
     return true;
   }
 
+  async clearObsoleteData() {
+    const currentDate = new Date();
+    const daysOlderThan = 5;
+    currentDate.setDate(currentDate.getDate() - daysOlderThan);
+    return this.gameModel.updateMany(
+      {
+        createdAt: { $lte: currentDate },
+        status: GameStatus.Pending,
+      },
+      {
+        status: GameStatus.Cancelled,
+      },
+    );
+  }
+
   async getWordle(gameId: string): Promise<string> {
     const foundGame = await this.gameModel.findById(gameId);
     if (!foundGame) {
       throw new Error('Game not found');
     }
     return foundGame.wordle;
+  }
+
+  private getRandomWord(length: number): string {
+    let result = '';
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const charactersLength = characters.length;
+    for (let i = 0; i < length; i++) {
+      result += characters.charAt(Math.floor(Math.random() * charactersLength));
+    }
+    return result;
+  }
+  private mergeRowsAndStatuses(
+    rows: string[],
+    statuses: LetterState[][],
+  ): { character: string; state: LetterState }[][] {
+    return statuses.map((status: LetterState[], i: number) => {
+      const row = rows[i];
+      return status.map((statusItem: LetterState, j: number) => ({
+        character: row[j],
+        state: statusItem,
+      }));
+    });
   }
 }
