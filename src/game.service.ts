@@ -26,6 +26,7 @@ export class GameService {
         status: GameStatus.Pending,
         'config.mode': GameMode.Online,
         gameCode: { $in: ['', null] },
+        'player1.name': { $ne: userId },
       });
       // console.log(foundGame);
       // console.log({ foundGame });
