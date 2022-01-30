@@ -163,7 +163,7 @@ export class GameService {
       const timeout = setTimeout(() => {
         clearInterval(interval);
         rej(new Error("Couldn't find a game"));
-      }, 30000);
+      }, 20000);
     });
   }
 
