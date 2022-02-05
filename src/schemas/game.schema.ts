@@ -19,6 +19,7 @@ export type OngoingGame = {
   moves?: { character: string; state: LetterState }[][];
   opponentMoves?: LetterState[][];
   opponentId: string;
+  status?: GameStatus;
 };
 
 export class GamePlayer {

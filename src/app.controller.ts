@@ -8,8 +8,14 @@ import {
   Res,
 } from '@nestjs/common';
 import { Response } from 'express';
-import { CreateGameData, GameData, JoinGameFromCodeData } from './dtos/game';
+import {
+  CheckGameData,
+  CreateGameData,
+  GameData,
+  JoinGameFromCodeData,
+} from './dtos/game';
 import { GameService } from './game.service';
+import { OngoingGame } from './schemas/game.schema';
 
 @Controller('games')
 export class AppController {
@@ -33,9 +39,61 @@ export class AppController {
     }
   }
 
+  @Post('join-or-create')
+  async joinOrCreateGame(
+    @Body() details: CreateGameData,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<GameData> {
+    try {
+      const gameDetails = await this.gameService.joinGameOrCreateNew(
+        details.userId,
+      );
+
+      return gameDetails;
+    } catch (err) {
+      response.status(HttpStatus.BAD_REQUEST).send({ error: err.message });
+      return;
+    }
+  }
+
+  @Post('v2/join-with-code')
+  async joinFromCodeWithoutPolling(
+    @Body() details: JoinGameFromCodeData,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<Partial<OngoingGame>> {
+    try {
+      const gameDetails = await this.gameService.joinFromCodeWithoutPolling(
+        details.userId,
+        details.gameCode,
+      );
+      return gameDetails;
+    } catch (err) {
+      response.status(HttpStatus.BAD_REQUEST).send({ error: err.message });
+      return;
+    }
+  }
+
+  @Post('poll-for-player')
+  async pollForPlayer(
+    @Body() details: CheckGameData,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<Partial<OngoingGame>> {
+    try {
+      const gameDetails: Partial<OngoingGame> =
+        await this.gameService.checkIfAnOpponentJoined(
+          details.gameId,
+          details.playerId,
+        );
+      return gameDetails;
+    } catch (err) {
+      response.status(HttpStatus.BAD_REQUEST).send({ error: err.message });
+      return;
+    }
+  }
+
   @Post('join-solo')
   async createSoloGame(@Body() details: CreateGameData) {
-    const gameDetails = await this.gameService.createSoloGame(
+    const gameDetails = await this.gameService.createNewGame(
       details.userId,
       true,
     );

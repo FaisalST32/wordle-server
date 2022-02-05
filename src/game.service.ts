@@ -28,8 +28,6 @@ export class GameService {
         gameCode: { $in: ['', null] },
         'player1.name': { $ne: userId },
       });
-      // console.log(foundGame);
-      // console.log({ foundGame });
       if (foundGame) {
         foundGame.status = GameStatus.Started;
         foundGame.player2 = { ...foundGame.player2, name: userId };
@@ -42,7 +40,7 @@ export class GameService {
               : game.player1.name,
         };
       }
-      newGame = await this.createSoloGame(userId);
+      newGame = await this.createNewGame(userId);
       const startedGame = await this.pollForPlayerJoined(newGame._id);
       return {
         gameId: startedGame.id,
@@ -60,7 +58,7 @@ export class GameService {
     }
   }
 
-  async createSoloGame(userId: string, isSolo = false): Promise<GameDocument> {
+  async createNewGame(userId: string, isSolo = false): Promise<GameDocument> {
     const gameData: Game = {
       status: isSolo ? GameStatus.Started : GameStatus.Pending,
       player1: { name: userId, rows: [], statuses: [] },
@@ -104,21 +102,9 @@ export class GameService {
     ) {
       throw new Error('The game already has maximum allowed players');
     }
-    const currentPlayerProp =
-      foundGame.player1.name === userId ? 'player1' : 'player2';
-    const opponentPlayerProp =
-      currentPlayerProp === 'player1' ? 'player2' : 'player1';
 
     if (foundGame.status === GameStatus.Started) {
-      return {
-        gameId: foundGame.id,
-        opponentMoves: foundGame[opponentPlayerProp].statuses,
-        moves: this.mergeRowsAndStatuses(
-          foundGame[currentPlayerProp].rows,
-          foundGame[currentPlayerProp].statuses,
-        ),
-        opponentId: foundGame[opponentPlayerProp].name,
-      };
+      return this.convertGameToOngoingGame(foundGame, userId);
     }
 
     const shouldWaitForOpponentToJoin =
@@ -140,8 +126,105 @@ export class GameService {
     };
   }
 
+  async joinFromCodeWithoutPolling(
+    userId: string,
+    gameCode: string,
+  ): Promise<Partial<OngoingGame>> {
+    const foundGame = await this.gameModel.findOne({
+      gameCode,
+      status: { $ne: GameStatus.Finished },
+    });
+    if (!foundGame) {
+      throw new Error('Cannot find a game with that code');
+    }
+    if (
+      foundGame.player1.name &&
+      foundGame.player2.name &&
+      ![foundGame.player1.name, foundGame.player2.name].includes(userId)
+    ) {
+      throw new Error('The game already has maximum allowed players');
+    }
+
+    if (foundGame.status === GameStatus.Started) {
+      return this.convertGameToOngoingGame(foundGame, userId);
+    }
+
+    const opponentHasntJoined =
+      foundGame.player1.name === userId && !foundGame.player2.name;
+
+    if (opponentHasntJoined) {
+      return {
+        status: GameStatus.Pending,
+        gameId: foundGame.id,
+      };
+    }
+    foundGame.status = GameStatus.Started;
+    foundGame.player2 = { ...foundGame.player2, name: userId };
+    const game = await foundGame.save();
+    return this.convertGameToOngoingGame(game, userId);
+  }
+
   getGameStatus() {
     return 'ongoing';
+  }
+
+  async joinGameOrCreateNew(userId: string) {
+    let newGame: GameDocument;
+    try {
+      const gameWaitingForOpponent = await this.gameModel.findOne({
+        status: GameStatus.Pending,
+        'config.mode': GameMode.Online,
+        gameCode: { $in: ['', null] },
+        'player1.name': { $ne: userId },
+      });
+
+      if (gameWaitingForOpponent) {
+        gameWaitingForOpponent.status = GameStatus.Started;
+        gameWaitingForOpponent.player2 = {
+          ...gameWaitingForOpponent.player2,
+          name: userId,
+        };
+        const game = await gameWaitingForOpponent.save();
+        return {
+          gameId: game.id,
+          opponentId:
+            game.player1.name === userId
+              ? game.player2.name
+              : game.player1.name,
+        };
+      }
+      newGame = await this.createNewGame(userId);
+
+      return {
+        gameId: newGame.id,
+        status: newGame.status,
+        opponentId: '',
+      };
+    } catch (err) {
+      if (newGame) {
+        newGame.status = GameStatus.Cancelled;
+        await newGame.save();
+      }
+      throw err;
+    }
+  }
+
+  async checkIfAnOpponentJoined(
+    gameId: string,
+    playerId: string,
+  ): Promise<Partial<OngoingGame>> {
+    const startedGame = await this.gameModel.findOne({
+      _id: gameId,
+      status: GameStatus.Started,
+      'config.mode': GameMode.Online,
+      'player1.name': playerId,
+    });
+    if (startedGame) {
+      return this.convertGameToOngoingGame(startedGame, playerId);
+    }
+    return {
+      status: GameStatus.Pending,
+    };
   }
 
   async pollForPlayerJoined(gameId: ObjectId): Promise<GameDocument> {
@@ -298,6 +381,27 @@ export class GameService {
     }
     return result;
   }
+
+  private convertGameToOngoingGame(
+    game: GameDocument,
+    currentPlayer: string,
+  ): OngoingGame {
+    const currentPlayerProp =
+      game.player1.name === currentPlayer ? 'player1' : 'player2';
+    const opponentPlayerProp =
+      currentPlayerProp === 'player1' ? 'player2' : 'player1';
+    return {
+      gameId: game.id,
+      opponentMoves: game[opponentPlayerProp].statuses,
+      moves: this.mergeRowsAndStatuses(
+        game[currentPlayerProp].rows,
+        game[currentPlayerProp].statuses,
+      ),
+      opponentId: game[opponentPlayerProp].name,
+      status: game.status,
+    };
+  }
+
   private mergeRowsAndStatuses(
     rows: string[],
     statuses: LetterState[][],
