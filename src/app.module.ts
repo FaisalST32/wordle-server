@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { GameModule } from './schemas/game.module';
+import { MockModule } from './schemas/mock.module';
 @Module({
   imports: [
     GameModule,
@@ -16,6 +17,7 @@ import { GameModule } from './schemas/game.module';
         return process.env.MONGO_CONNECTION_STRING;
       })(),
     ),
+    MockModule,
   ],
   controllers: [],
   providers: [],

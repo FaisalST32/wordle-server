@@ -10,6 +10,7 @@ import {
   GameStatus,
   OngoingGame,
 } from './schemas/game.schema';
+import { getRandomWord } from './utilities/string.utils';
 import { LetterState, WordsService } from './words.service';
 
 @Injectable()
@@ -80,7 +81,7 @@ export class GameService {
       winner: '',
       wordle: this.wordsService.generateWordle(),
       config: { mode: GameMode.Online },
-      gameCode: this.getRandomWord(5),
+      gameCode: getRandomWord(5),
     };
     const newGame = new this.gameModel(gameData);
     await newGame.save();
@@ -370,16 +371,6 @@ export class GameService {
       throw new Error('Game not found');
     }
     return foundGame.wordle;
-  }
-
-  private getRandomWord(length: number): string {
-    let result = '';
-    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    const charactersLength = characters.length;
-    for (let i = 0; i < length; i++) {
-      result += characters.charAt(Math.floor(Math.random() * charactersLength));
-    }
-    return result;
   }
 
   private convertGameToOngoingGame(
